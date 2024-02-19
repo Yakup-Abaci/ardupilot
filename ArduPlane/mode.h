@@ -8,6 +8,8 @@
 #include <AP_Vehicle/ModeReason.h>
 #include "quadplane.h"
 #include <AP_AHRS/AP_AHRS.h>
+#include <AP_Mission/AP_Mission.h>
+#include <AP_ExternalControl/AP_ExternalControl_config.h>
 
 class AC_PosControl;
 class AC_AttitudeControl_Multi;
@@ -65,7 +67,7 @@ public:
     void exit();
 
     // run controllers specific to this mode
-    virtual void run() {};
+    virtual void run();
 
     // returns a unique number specific to this mode
     virtual Number mode_number() const = 0;
@@ -78,6 +80,9 @@ public:
 
     // returns true if the vehicle can be armed in this mode
     bool pre_arm_checks(size_t buflen, char *buffer) const;
+
+    // Reset rate and steering controllers
+    void reset_controllers();
 
     //
     // methods that sub classes should override to affect movement of the vehicle in this mode
@@ -125,6 +130,18 @@ public:
     // handle a guided target request from GCS
     virtual bool handle_guided_request(Location target_loc) { return false; }
 
+    // true if is landing 
+    virtual bool is_landing() const { return false; }
+
+    // true if is taking 
+    virtual bool is_taking_off() const;
+
+    // true if throttle min/max limits should be applied
+    bool use_throttle_limits() const;
+
+    // true if voltage correction should be applied to throttle
+    bool use_battery_compensation() const;
+
 protected:
 
     // subclasses override this to perform checks before entering the mode
@@ -135,6 +152,9 @@ protected:
 
     // mode specific pre-arm checks
     virtual bool _pre_arm_checks(size_t buflen, char *buffer) const;
+
+    // Helper to output to both k_rudder and k_steering servo functions
+    void output_rudder_and_steering(float val);
 
 #if HAL_QUADPLANE_ENABLED
     // References for convenience, used by QModes
@@ -206,11 +226,27 @@ public:
     
     bool mode_allows_autotuning() const override { return true; }
 
+    bool is_landing() const override;
+
+    void do_nav_delay(const AP_Mission::Mission_Command& cmd);
+    bool verify_nav_delay(const AP_Mission::Mission_Command& cmd);
+
+    void run() override;
+
 protected:
 
     bool _enter() override;
     void _exit() override;
     bool _pre_arm_checks(size_t buflen, char *buffer) const override;
+
+private:
+
+    // Delay the next navigation command
+    struct {
+        uint32_t time_max_ms;
+        uint32_t time_start_ms;
+    } nav_delay;
+
 };
 
 
@@ -259,6 +295,34 @@ public:
     void set_radius_and_direction(const float radius, const bool direction_is_ccw);
 
     void update_target_altitude() override;
+
+    // wp controller
+    void wp_control_start();
+    void wp_control_run();
+
+    void pva_control_start();
+    void pos_control_start();
+    void accel_control_start();
+    void velaccel_control_start();
+    void posvelaccel_control_start();
+    void pos_control_run();
+    void accel_control_run();
+    void velaccel_control_run();
+    void pause_control_run();
+    void posvelaccel_control_run();
+    bool set_destination(const Vector3f& destination, bool use_yaw = false, float yaw_cd = 0.0, bool use_yaw_rate = false, float yaw_rate_cds = 0.0, bool yaw_relative = false, bool terrain_alt = false);
+    bool set_destination(const Location& dest_loc, bool use_yaw = false, float yaw_cd = 0.0, bool use_yaw_rate = false, float yaw_rate_cds = 0.0, bool yaw_relative = false);
+    bool get_wp(Location &loc) const override;
+    void set_accel(const Vector3f& acceleration, bool use_yaw = false, float yaw_cd = 0.0, bool use_yaw_rate = false, float yaw_rate_cds = 0.0, bool yaw_relative = false, bool log_request = true);
+    void set_velocity(const Vector3f& velocity, bool use_yaw = false, float yaw_cd = 0.0, bool use_yaw_rate = false, float yaw_rate_cds = 0.0, bool yaw_relative = false, bool log_request = true);
+    void set_velaccel(const Vector3f& velocity, const Vector3f& acceleration, bool use_yaw = false, float yaw_cd = 0.0, bool use_yaw_rate = false, float yaw_rate_cds = 0.0, bool yaw_relative = false, bool log_request = true);
+    bool set_destination_posvel(const Vector3f& destination, const Vector3f& velocity, bool use_yaw = false, float yaw_cd = 0.0, bool use_yaw_rate = false, float yaw_rate_cds = 0.0, bool yaw_relative = false);
+    bool set_destination_posvelaccel(const Vector3f& destination, const Vector3f& velocity, const Vector3f& acceleration, bool use_yaw = false, float yaw_cd = 0.0, bool use_yaw_rate = false, float yaw_rate_cds = 0.0, bool yaw_relative = false);
+
+    // get position, velocity and acceleration targets
+    const Vector3p& get_target_pos() const;
+    const Vector3f& get_target_vel() const;
+    const Vector3f& get_target_accel() const;
 
 protected:
 
@@ -355,6 +419,8 @@ public:
 
     // methods that affect movement of the vehicle in this mode
     void update() override;
+
+    void run() override;
 };
 
 
@@ -398,6 +464,12 @@ public:
 
     // methods that affect movement of the vehicle in this mode
     void update() override;
+
+    void run() override;
+
+private:
+    void stabilize_stick_mixing_direct();
+
 };
 
 class ModeTraining : public Mode
@@ -663,6 +735,13 @@ private:
     enum class SubMode {
         climb,
         RTL,
+        TakeOff,
+        WP,
+        Pos,
+        PosVelAccel,
+        VelAccel,
+        Accel,
+        Angle,
     } submode;
 };
 
@@ -745,7 +824,7 @@ protected:
     AP_Int16 target_dist;
     AP_Int8 level_pitch;
 
-    bool takeoff_started;
+    bool takeoff_mode_setup;
     Location start_loc;
 
     bool _enter() override;

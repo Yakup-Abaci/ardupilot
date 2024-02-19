@@ -1,13 +1,13 @@
 #include "Plane.h"
 
-Mode::Mode() :
-    ahrs(plane.ahrs)
+Mode::Mode() : ahrs(plane.ahrs)
 #if HAL_QUADPLANE_ENABLED
-    , quadplane(plane.quadplane),
-    pos_control(plane.quadplane.pos_control),
-    attitude_control(plane.quadplane.attitude_control),
-    loiter_nav(plane.quadplane.loiter_nav),
-    poscontrol(plane.quadplane.poscontrol)
+               ,
+               quadplane(plane.quadplane),
+               pos_control(plane.quadplane.pos_control),
+               attitude_control(plane.quadplane.attitude_control),
+               loiter_nav(plane.quadplane.loiter_nav),
+               poscontrol(plane.quadplane.poscontrol)
 #endif
 {
 }
@@ -17,10 +17,10 @@ void Mode::exit()
     // call sub-classes exit
     _exit();
     // stop autotuning if not AUTOTUNE mode
-    if (plane.control_mode != &plane.mode_autotune){
+    if (plane.control_mode != &plane.mode_autotune)
+    {
         plane.autotune_restore();
     }
-
 }
 
 bool Mode::enter()
@@ -32,6 +32,9 @@ bool Mode::enter()
 
     // cancel inverted flight
     plane.auto_state.inverted_flight = false;
+
+    // cancel waiting for rudder neutral
+    plane.takeoff_state.waiting_for_rudder_neutral = false;
 
     // don't cross-track when starting a mission
     plane.auto_state.next_wp_crosstrack = false;
@@ -55,7 +58,7 @@ bool Mode::enter()
     plane.guided_state.target_heading = -4; // radians here are in range -3.14 to 3.14, so a default value needs to be outside that range
     plane.guided_state.target_heading_type = GUIDED_HEADING_NONE;
     plane.guided_state.target_airspeed_cm = -1; // same as above, although an airspeed of -1 is rare on plane.
-    plane.guided_state.target_alt = -1; // same as above, although a target alt of -1 is rare on plane.
+    plane.guided_state.target_alt = -1;         // same as above, although a target alt of -1 is rare on plane.
     plane.guided_state.target_alt_time_ms = 0;
     plane.guided_state.last_target_alt = 0;
 #endif
@@ -87,6 +90,9 @@ bool Mode::enter()
     // initialize speed variable used in AUTO and GUIDED for DO_CHANGE_SPEED commands
     plane.new_airspeed_cm = -1;
 
+    // clear postponed long failsafe if mode change (from GCS) occurs before recall of long failsafe
+    plane.long_failsafe_pending = false;
+
 #if HAL_QUADPLANE_ENABLED
     quadplane.mode_enter();
 #endif
@@ -97,7 +103,8 @@ bool Mode::enter()
 
     bool enter_result = _enter();
 
-    if (enter_result) {
+    if (enter_result)
+    {
         // -------------------
         // these must be done AFTER _enter() because they use the results to set more flags
 
@@ -106,6 +113,9 @@ bool Mode::enter()
 #if HAL_ADSB_ENABLED
         plane.adsb.set_is_auto_mode(does_auto_navigation());
 #endif
+
+        // set the nav controller stale AFTER _enter() so that we can check if we're currently in a loiter during the mode change
+        plane.nav_controller->set_data_is_stale();
 
         // reset steering integrator on mode change
         plane.steerController.reset_I();
@@ -119,6 +129,17 @@ bool Mode::enter()
         // but it should be harmless to disable the fence temporarily in these situations as well
         plane.fence.manual_recovery_start();
 #endif
+        // reset mission if in landing sequence, disarmed, not flying, and have changed to a non-autothrottle mode to clear prearm
+        if (plane.mission.get_in_landing_sequence_flag() &&
+            !plane.is_flying() && !plane.arming.is_armed_and_safety_off() &&
+            !plane.control_mode->does_auto_navigation())
+        {
+            GCS_SEND_TEXT(MAV_SEVERITY_INFO, "In landing sequence: mission reset");
+            plane.mission.reset();
+        }
+
+        // Make sure the flight stage is correct for the new mode
+        plane.update_flight_stage();
     }
 
     return enter_result;
@@ -128,7 +149,8 @@ bool Mode::is_vtol_man_throttle() const
 {
 #if HAL_QUADPLANE_ENABLED
     if (plane.quadplane.tailsitter.is_in_fw_flight() &&
-        plane.quadplane.assisted_flight) {
+        plane.quadplane.assisted_flight)
+    {
         // We are a tailsitter that has fully transitioned to Q-assisted forward flight.
         // In this case the forward throttle directly drives the vertical throttle so
         // set vertical throttle state to match the forward throttle state. Confusingly the booleans are inverted,
@@ -143,33 +165,46 @@ void Mode::update_target_altitude()
 {
     Location target_location;
 
-    if (plane.landing.is_flaring()) {
+    if (plane.landing.is_flaring())
+    {
         // during a landing flare, use TECS_LAND_SINK as a target sink
         // rate, and ignores the target altitude
         plane.set_target_altitude_location(plane.next_WP_loc);
-    } else if (plane.landing.is_on_approach()) {
+    }
+    else if (plane.landing.is_on_approach())
+    {
         plane.landing.setup_landing_glide_slope(plane.prev_WP_loc, plane.next_WP_loc, plane.current_loc, plane.target_altitude.offset_cm);
         plane.landing.adjust_landing_slope_for_rangefinder_bump(plane.rangefinder_state, plane.prev_WP_loc, plane.next_WP_loc, plane.current_loc, plane.auto_state.wp_distance, plane.target_altitude.offset_cm);
-    } else if (plane.landing.get_target_altitude_location(target_location)) {
+    }
+    else if (plane.landing.get_target_altitude_location(target_location))
+    {
         plane.set_target_altitude_location(target_location);
 #if HAL_SOARING_ENABLED
-    } else if (plane.g2.soaring_controller.is_active() && plane.g2.soaring_controller.get_throttle_suppressed()) {
+    }
+    else if (plane.g2.soaring_controller.is_active() && plane.g2.soaring_controller.get_throttle_suppressed())
+    {
         // Reset target alt to current alt, to prevent large altitude errors when gliding.
         plane.set_target_altitude_location(plane.current_loc);
         plane.reset_offset_altitude();
 #endif
-    } else if (plane.reached_loiter_target()) {
+    }
+    else if (plane.reached_loiter_target())
+    {
         // once we reach a loiter target then lock to the final
         // altitude target
         plane.set_target_altitude_location(plane.next_WP_loc);
-    } else if (plane.target_altitude.offset_cm != 0 && 
-               !plane.current_loc.past_interval_finish_line(plane.prev_WP_loc, plane.next_WP_loc)) {
+    }
+    else if (plane.target_altitude.offset_cm != 0 &&
+             !plane.current_loc.past_interval_finish_line(plane.prev_WP_loc, plane.next_WP_loc))
+    {
         // control climb/descent rate
-        plane.set_target_altitude_proportion(plane.next_WP_loc, 1.0f-plane.auto_state.wp_proportion);
+        plane.set_target_altitude_proportion(plane.next_WP_loc, 1.0f - plane.auto_state.wp_proportion);
 
         // stay within the range of the start and end locations in altitude
         plane.constrain_target_altitude_location(plane.next_WP_loc, plane.prev_WP_loc);
-    } else {
+    }
+    else
+    {
         plane.set_target_altitude_location(plane.next_WP_loc);
     }
 
@@ -179,8 +214,10 @@ void Mode::update_target_altitude()
 // returns true if the vehicle can be armed in this mode
 bool Mode::pre_arm_checks(size_t buflen, char *buffer) const
 {
-    if (!_pre_arm_checks(buflen, buffer)) {
-        if (strlen(buffer) == 0) {
+    if (!_pre_arm_checks(buflen, buffer))
+    {
+        if (strlen(buffer) == 0)
+        {
             // If no message is provided add a generic one
             hal.util->snprintf(buffer, buflen, "mode not armable");
         }
@@ -195,10 +232,178 @@ bool Mode::_pre_arm_checks(size_t buflen, char *buffer) const
 {
 #if HAL_QUADPLANE_ENABLED
     if (plane.quadplane.enabled() && !is_vtol_mode() &&
-            plane.quadplane.option_is_set(QuadPlane::OPTION::ONLY_ARM_IN_QMODE_OR_AUTO)) {
+        plane.quadplane.option_is_set(QuadPlane::OPTION::ONLY_ARM_IN_QMODE_OR_AUTO))
+    {
         hal.util->snprintf(buffer, buflen, "not Q mode");
         return false;
     }
 #endif
     return true;
+}
+
+void Mode::run()
+{
+    // Direct stick mixing functionality has been removed, so as not to remove all stick mixing from the user completely
+    // the old direct option is now used to enable fbw mixing, this is easier than doing a param conversion.
+    if ((plane.g.stick_mixing == StickMixing::FBW) || (plane.g.stick_mixing == StickMixing::DIRECT_REMOVED))
+    {
+        plane.stabilize_stick_mixing_fbw();
+    }
+    plane.stabilize_roll();
+    plane.stabilize_pitch();
+    plane.stabilize_yaw();
+}
+
+// Reset rate and steering controllers
+void Mode::reset_controllers()
+{
+    // reset integrators
+    plane.rollController.reset_I();
+    plane.pitchController.reset_I();
+    plane.yawController.reset_I();
+
+    // reset steering controls
+    plane.steer_state.locked_course = false;
+    plane.steer_state.locked_course_err = 0;
+}
+
+bool Mode::is_taking_off() const
+{
+    return (plane.flight_stage == AP_FixedWing::FlightStage::TAKEOFF);
+}
+
+// Helper to output to both k_rudder and k_steering servo functions
+void Mode::output_rudder_and_steering(float val)
+{
+    SRV_Channels::set_output_scaled(SRV_Channel::k_rudder, val);
+    SRV_Channels::set_output_scaled(SRV_Channel::k_steering, val);
+}
+
+// true if throttle min/max limits should be applied
+bool Mode::use_throttle_limits() const
+{
+#if AP_SCRIPTING_ENABLED
+    if (plane.nav_scripting_active())
+    {
+        return false;
+    }
+#endif
+
+    if (this == &plane.mode_stabilize ||
+        this == &plane.mode_training ||
+        this == &plane.mode_acro ||
+        this == &plane.mode_fbwa ||
+        this == &plane.mode_autotune)
+    {
+        // a manual throttle mode
+        return !plane.g.throttle_passthru_stabilize;
+    }
+
+    if (is_guided_mode() && plane.guided_throttle_passthru)
+    {
+        // manual pass through of throttle while in GUIDED
+        return false;
+    }
+
+#if HAL_QUADPLANE_ENABLED
+    if (quadplane.in_vtol_mode())
+    {
+        return quadplane.allow_forward_throttle_in_vtol_mode();
+    }
+#endif
+
+    return true;
+}
+
+// true if voltage correction should be applied to throttle
+bool Mode::use_battery_compensation() const
+{
+#if AP_SCRIPTING_ENABLED
+    if (plane.nav_scripting_active())
+    {
+        return false;
+    }
+#endif
+
+    if (this == &plane.mode_stabilize ||
+        this == &plane.mode_training ||
+        this == &plane.mode_acro ||
+        this == &plane.mode_fbwa ||
+        this == &plane.mode_autotune)
+    {
+        // a manual throttle mode
+        return false;
+    }
+
+    if (is_guided_mode() && plane.guided_throttle_passthru)
+    {
+        // manual pass through of throttle while in GUIDED
+        return false;
+    }
+
+#if HAL_QUADPLANE_ENABLED
+    if (quadplane.in_vtol_mode())
+    {
+        return false;
+    }
+#endif
+
+    return true;
+}
+GCS_Plane &Mode::gcs()
+{
+    return plane.gcs();
+}
+
+bool Mode::is_disarmed_or_landed() const
+{
+    if (!motors->armed())
+    {
+        return true;
+    }
+    return false;
+}
+
+// handle situations where the vehicle is on the ground waiting for takeoff
+// force_throttle_unlimited should be true in cases where we want to keep the motors spooled up
+// (instead of spooling down to ground idle).  This is required for tradheli's in Guided and Auto
+// where we always want the motor spooled up in Guided or Auto mode.  Tradheli's main rotor stops
+// when spooled down to ground idle.
+// ultimately it forces the motor interlock to be obeyed in auto and guided modes when on the ground.
+void Mode::make_safe_ground_handling(bool force_throttle_unlimited)
+{
+    if (force_throttle_unlimited)
+    {
+        // keep rotors turning
+        motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
+    }
+    else
+    {
+        // spool down to ground idle
+        motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::GROUND_IDLE);
+    }
+
+    // aircraft is landed, integrator terms must be reset regardless of spool state
+    attitude_control->reset_rate_controller_I_terms_smoothly();
+
+    switch (motors->get_spool_state())
+    {
+    case AP_Motors::SpoolState::SHUT_DOWN:
+    case AP_Motors::SpoolState::GROUND_IDLE:
+        // reset yaw targets and rates during idle states
+        attitude_control->reset_yaw_target_and_rate();
+        break;
+    case AP_Motors::SpoolState::SPOOLING_UP:
+    case AP_Motors::SpoolState::THROTTLE_UNLIMITED:
+    case AP_Motors::SpoolState::SPOOLING_DOWN:
+        // while transitioning though active states continue to operate normally
+        break;
+    }
+
+    pos_control->relax_velocity_controller_xy();
+    pos_control->update_xy_controller();
+    pos_control->relax_z_controller(0.0f); // forces throttle output to decay to zero
+    pos_control->update_z_controller();
+    // we may need to move this out
+    attitude_control->input_euler_angle_roll_pitch_euler_rate_yaw(0.0f, 0.0f, 0.0f);
 }
