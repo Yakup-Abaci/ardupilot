@@ -302,7 +302,8 @@ void ModeGuided::pva_control_start()
 void ModeGuided::pause_control_run()
 {
     // set motors to full range
-    motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
+    plane.quadplane.motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
+    //motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
 
     // set the horizontal velocity and acceleration targets to zero
     Vector2f vel_xy, accel_xy;
@@ -327,12 +328,12 @@ void ModeGuided::wp_control_run()
     if (is_disarmed_or_landed())
     {
         // do not spool down tradheli when on the ground with motor interlock enabled
-        make_safe_ground_handling(motors->get_interlock());
+        make_safe_ground_handling(plane.quadplane.motors->get_interlock());
         return;
     }
 
     // set motors to full range
-    motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
+    plane.quadplane.motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
 
     // run waypoint controller
     // plane.failsafe_terrain_set_status(wp_nav->update_wpnav());
@@ -352,7 +353,7 @@ void ModeGuided::pos_control_run()
     if (is_disarmed_or_landed())
     {
         // do not spool down tradheli when on the ground with motor interlock enabled
-        make_safe_ground_handling(motors->get_interlock());
+        make_safe_ground_handling(plane.quadplane.motors->get_interlock());
         return;
     }
 
@@ -366,7 +367,7 @@ void ModeGuided::pos_control_run()
     }
 
     // set motors to full range
-    motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
+    plane.quadplane.motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
 
     // send position and velocity targets to position controller
     guided_accel_target_cmss.zero();
@@ -393,12 +394,12 @@ void ModeGuided::accel_control_run()
     if (is_disarmed_or_landed())
     {
         // do not spool down tradheli when on the ground with motor interlock enabled
-        make_safe_ground_handling(motors->get_interlock());
+        make_safe_ground_handling(plane.quadplane.motors->get_interlock());
         return;
     }
 
     // set motors to full range
-    motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
+    plane.quadplane.motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
 
     // set velocity to zero and stop rotating if no updates received for 3 seconds
     uint32_t tnow = millis();
@@ -441,12 +442,12 @@ void ModeGuided::velaccel_control_run()
     if (is_disarmed_or_landed())
     {
         // do not spool down tradheli when on the ground with motor interlock enabled
-        make_safe_ground_handling(motors->get_interlock());
+        make_safe_ground_handling(plane.quadplane.motors->get_interlock());
         return;
     }
 
     // set motors to full range
-    motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
+    plane.quadplane.motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
 
     // set velocity to zero and stop rotating if no updates received for 3 seconds
     uint32_t tnow = millis();
@@ -500,12 +501,12 @@ void ModeGuided::posvelaccel_control_run()
     if (is_disarmed_or_landed())
     {
         // do not spool down tradheli when on the ground with motor interlock enabled
-        make_safe_ground_handling(motors->get_interlock());
+        make_safe_ground_handling(plane.quadplane.motors->get_interlock());
         return;
     }
 
     // set motors to full range
-    motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
+    plane.quadplane.motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
 
     // set velocity to zero and stop rotating if no updates received for 3 seconds
     uint32_t tnow = millis();
@@ -590,10 +591,10 @@ void ModeGuided::angle_control_run()
     }
 
     // if not armed set throttle to zero and exit immediately
-    if (!motors->armed())
+    if (!plane.quadplane.motors->armed())
     {
         // do not spool down tradheli when on the ground with motor interlock enabled
-        make_safe_ground_handling(motors->get_interlock());
+        make_safe_ground_handling(plane.quadplane.motors->get_interlock());
         return;
     }
 
@@ -602,8 +603,8 @@ void ModeGuided::angle_control_run()
     if ((guided_angle_state.climb_rate_cms > 0.0f))
     {
         zero_throttle_and_relax_ac();
-        motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
-        if (motors->get_spool_state() == AP_Motors::SpoolState::THROTTLE_UNLIMITED)
+        plane.quadplane.motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
+        if (plane.quadplane.motors->get_spool_state() == AP_Motors::SpoolState::THROTTLE_UNLIMITED)
         {
             pos_control->init_z_controller();
         }
@@ -611,7 +612,7 @@ void ModeGuided::angle_control_run()
     }
 
     // set motors to full range
-    motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
+    plane.quadplane.motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
 
     // call attitude controller
     if (guided_angle_state.attitude_quat.is_zero())
