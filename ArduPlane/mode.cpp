@@ -7,7 +7,8 @@ Mode::Mode() :
     pos_control(plane.quadplane.pos_control),
     attitude_control(plane.quadplane.attitude_control),
     loiter_nav(plane.quadplane.loiter_nav),
-    poscontrol(plane.quadplane.poscontrol)
+    poscontrol(plane.quadplane.poscontrol),
+    motors(plane.quadplane.motors)
 #endif
 {
 }
@@ -201,4 +202,61 @@ bool Mode::_pre_arm_checks(size_t buflen, char *buffer) const
     }
 #endif
     return true;
+}
+CS_Plane &Mode::gcs()
+{
+    return plane.gcs();
+}
+
+bool Mode::is_disarmed_or_landed() const
+{
+    if (!motors->armed())
+    {
+        return true;
+    }
+    return false;
+}
+
+// handle situations where the vehicle is on the ground waiting for takeoff
+// force_throttle_unlimited should be true in cases where we want to keep the motors spooled up
+// (instead of spooling down to ground idle).  This is required for tradheli's in Guided and Auto
+// where we always want the motor spooled up in Guided or Auto mode.  Tradheli's main rotor stops
+// when spooled down to ground idle.
+// ultimately it forces the motor interlock to be obeyed in auto and guided modes when on the ground.
+void Mode::make_safe_ground_handling(bool force_throttle_unlimited)
+{
+    if (force_throttle_unlimited)
+    {
+        // keep rotors turning
+        motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::THROTTLE_UNLIMITED);
+    }
+    else
+    {
+        // spool down to ground idle
+        motors->set_desired_spool_state(AP_Motors::DesiredSpoolState::GROUND_IDLE);
+    }
+
+    // aircraft is landed, integrator terms must be reset regardless of spool state
+    attitude_control->reset_rate_controller_I_terms_smoothly();
+
+    switch (motors->get_spool_state())
+    {
+    case AP_Motors::SpoolState::SHUT_DOWN:
+    case AP_Motors::SpoolState::GROUND_IDLE:
+        // reset yaw targets and rates during idle states
+        attitude_control->reset_yaw_target_and_rate();
+        break;
+    case AP_Motors::SpoolState::SPOOLING_UP:
+    case AP_Motors::SpoolState::THROTTLE_UNLIMITED:
+    case AP_Motors::SpoolState::SPOOLING_DOWN:
+        // while transitioning though active states continue to operate normally
+        break;
+    }
+
+    pos_control->relax_velocity_controller_xy();
+    pos_control->update_xy_controller();
+    pos_control->relax_z_controller(0.0f); // forces throttle output to decay to zero
+    pos_control->update_z_controller();
+    // we may need to move this out
+    attitude_control->input_euler_angle_roll_pitch_euler_rate_yaw(0.0f, 0.0f, 0.0f);
 }
