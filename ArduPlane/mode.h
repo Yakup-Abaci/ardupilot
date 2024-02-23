@@ -143,7 +143,6 @@ protected:
     AC_Loiter*& loiter_nav;
     QuadPlane& quadplane;
     QuadPlane::PosControlState &poscontrol;
-    AP_InertialNav &inertial_nav;
 #endif
     AP_AHRS& ahrs;
 };
@@ -260,45 +259,6 @@ public:
     void set_radius_and_direction(const float radius, const bool direction_is_ccw);
 
     void update_target_altitude() override;
-
-    // wp controller
-    void wp_control_start();
-    void wp_control_run();
-
-    void pva_control_start();
-    void pos_control_start();
-    void accel_control_start();
-    void velaccel_control_start();
-    void posvelaccel_control_start();
-    void pos_control_run();
-    void accel_control_run();
-    void velaccel_control_run();
-    void pause_control_run();
-    void posvelaccel_control_run();
-    bool set_destination(const Vector3f& destination, bool use_yaw = false, float yaw_cd = 0.0, bool use_yaw_rate = false, float yaw_rate_cds = 0.0, bool yaw_relative = false, bool terrain_alt = false);
-    bool set_destination(const Location& dest_loc, bool use_yaw = false, float yaw_cd = 0.0, bool use_yaw_rate = false, float yaw_rate_cds = 0.0, bool yaw_relative = false);
-    bool get_wp(Location &loc) const override;
-    void set_accel(const Vector3f& acceleration, bool use_yaw = false, float yaw_cd = 0.0, bool use_yaw_rate = false, float yaw_rate_cds = 0.0, bool yaw_relative = false, bool log_request = true);
-    void set_velocity(const Vector3f& velocity, bool use_yaw = false, float yaw_cd = 0.0, bool use_yaw_rate = false, float yaw_rate_cds = 0.0, bool yaw_relative = false, bool log_request = true);
-    void set_velaccel(const Vector3f& velocity, const Vector3f& acceleration, bool use_yaw = false, float yaw_cd = 0.0, bool use_yaw_rate = false, float yaw_rate_cds = 0.0, bool yaw_relative = false, bool log_request = true);
-    bool set_destination_posvel(const Vector3f& destination, const Vector3f& velocity, bool use_yaw = false, float yaw_cd = 0.0, bool use_yaw_rate = false, float yaw_rate_cds = 0.0, bool yaw_relative = false);
-    bool set_destination_posvelaccel(const Vector3f& destination, const Vector3f& velocity, const Vector3f& acceleration, bool use_yaw = false, float yaw_cd = 0.0, bool use_yaw_rate = false, float yaw_rate_cds = 0.0, bool yaw_relative = false);
-
-    // get position, velocity and acceleration targets
-    const Vector3p& get_target_pos() const;
-    const Vector3f& get_target_vel() const;
-    const Vector3f& get_target_accel() const;
-
-    enum class SubMode {
-        TakeOff,
-        WP,
-        Pos,
-        PosVelAccel,
-        VelAccel,
-        Accel,
-        Angle,
-    };
-    SubMode submode() const { return guided_mode; }
 
 protected:
 
@@ -704,8 +664,6 @@ private:
         climb,
         RTL,
     } submode;
-
-    
 };
 
 class ModeQAcro : public Mode

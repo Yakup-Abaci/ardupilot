@@ -265,27 +265,6 @@ void Plane::Log_Write_Guided(void)
 #endif // OFFBOARD_GUIDED == ENABLED
 }
 
-
-void Plane::Log_Write_Guided_Position_Target(ModeGuided::SubMode target_type, const Vector3f& pos_target, bool terrain_alt, const Vector3f& vel_target, const Vector3f& accel_target)
-{
-    const log_Guided_Position_Target pkt {
-        LOG_PACKET_HEADER_INIT(LOG_GUIDED_POSITION_TARGET_MSG),
-        time_us         : AP_HAL::micros64(),
-        type            : (uint8_t)target_type,
-        pos_target_x    : pos_target.x,
-        pos_target_y    : pos_target.y,
-        pos_target_z    : pos_target.z,
-        terrain         : terrain_alt,
-        vel_target_x    : vel_target.x,
-        vel_target_y    : vel_target.y,
-        vel_target_z    : vel_target.z,
-        accel_target_x  : accel_target.x,
-        accel_target_y  : accel_target.y,
-        accel_target_z  : accel_target.z
-    };
-    logger.WriteBlock(&pkt, sizeof(pkt));
-}
-
 // incoming-to-vehicle mavlink COMMAND_INT can be logged
 struct PACKED log_CMDI {
     LOG_PACKET_HEADER;
@@ -500,9 +479,7 @@ void Plane::Log_Write_Status() {}
 void Plane::Log_Write_Guided(void) {}
 void Plane::Log_Write_RC(void) {}
 void Plane::Log_Write_Vehicle_Startup_Messages() {}
-void Copter::Log_Write_Guided_Position_Target(ModeGuided::SubMode target_type, const Vector3f& pos_target, bool terrain_alt, const Vector3f& vel_target, const Vector3f& accel_target) {}
 
 void Plane::log_init(void) {}
 
 #endif // LOGGING_ENABLED
-
